@@ -1,0 +1,435 @@
+<!doctype html>
+<!-- (c) 2018 Mario Hlawtischka -->
+<html lang="en">
+    <head>
+        <title>Clipping</title>
+
+<style>
+    #content{width:800px;height:800px; margin:10px auto;}
+    #canvas{}
+    body{font-family: 'Open Sans', sans-serif;}
+    h1{font-family: 'Arial', cursive;
+    text-align:center;}
+    p{
+    text-align:center;
+    }
+</style>
+
+<!--
+<link href='http://fonts.googleapis.com/css?family=Open+Sans' rel='stylesheet' type='text/css'>
+<link href='http://fonts.googleapis.com/css?family=Fredericka+the+Great' rel='stylesheet' type='text/css'>
+-->
+    <script>
+        // Der Zeichencanvas
+        var canvas;
+
+        // Der 2D-Context, in den gezeichet wird
+        var context;
+
+        // Hilfsvariablen für die Maussteuerung
+        var startX;
+        var startY;
+
+        var endX;
+        var endY;
+
+        // Die Beschreibung der Koordinaten des Fensters, auf das
+        // geclipped werden soll.
+        var pixelSize = 10;
+
+        var screen;
+        // Anzahl der Pixel im Bildschirm
+        screen.maxPixelX = 40;
+        screen.maxPixelY = 40;
+
+        // Größe des sichtbaren Randes außerhalb des Bildschirms in Pixeln
+        screen.border = 10;
+
+        // Koordinaten der Anzeige zum Umrechnen von Pixeln in Pixel des
+        // Browsers
+        screen.minx = screen.border * pixelSize;
+        screen.maxx = screen.minx + screen.maxPixelX * pixelSize;
+        screen.miny = screen.border * pixelSize;
+        screen.maxy = screen.miny + screen.maxPixelY * pixelSize;
+
+        screen.totalwidth = screen.maxx + screen.border * pixelSize;
+        screen.totalheight= screen.maxy + screen.border * pixelSize;
+
+function init(){
+    initCanvas();
+}
+
+function initCanvas()
+{
+    // Den Zeichencanvas aus dem Dokument holen und initialisieren
+    canvas = document.getElementById('canvas');
+    canvas.width = screen.totalwidth;
+    canvas.height= screen.totalheight;
+    context = canvas.getContext('2d');
+
+    // clear the canvas
+    context.fillStyle = "#ffffff";
+    context.strokeStyle = "#000000";
+    context.fillRect(0,0,screen.totalwidth,screen.totalheight);
+
+    // Mouse event listener hinzufügen
+    canvas.addEventListener('mousedown', onMouseDown);
+    canvas.addEventListener('mouseup', onMouseUp);
+
+    // Hintergrundgitter zeichnen
+    drawScreen();
+    drawGrid();
+}
+
+// Hier wird sich nur die Mausposition im Canvas gemerkt
+function onMouseDown(evt)
+{
+    var x = evt.pageX;
+    var y = evt.pageY;
+
+    x -=canvas.offsetLeft;
+    y -=canvas.offsetTop;
+
+    startX = x;
+    startY = y;
+}
+
+function onMouseUp(evt)
+{
+    var x = evt.pageX;
+    var y = evt.pageY;
+
+    x -= canvas.offsetLeft;
+    y -= canvas.offsetTop;
+
+    endX = x;
+    endY = y;
+
+    // Anzeige der Linie zum Debuggen
+    // drawLine( startX, startY, endX, endY );
+
+    // convert lines to pixel coordinate
+    var from = toPixelSpace( startX, startY );
+    var to   = toPixelSpace( endX, endY );
+    // draw clipped line (arguments in pixel coordinates)
+    drawClippedLine( from.x, from.y, to.x, to.y );
+}
+
+// Hilfsfunktion zum Zeichnen von Linien in
+// Koordinaten der Anzeige
+function drawLine( startX, startY, endX, endY )
+{
+    context.beginPath();
+    context.moveTo(startX, startY);
+    context.lineTo( endX, endY );
+    context.stroke();
+}
+
+// Hilfsfunktion zum Zeichen von Linien in
+// Koordinaten der einzelnen Pixel
+function drawLinePixelSpace( startX, startY, endX, endY )
+{
+    var start = toScreenSpace( startX + 0.5, startY + 0.5 );
+    var end   = toScreenSpace( endX + 0.5,   endY + 0.5 );
+    drawLine( start.x, start.y, end.x, end.y );
+}
+
+// Berechnung der vier Bit Maske für das Clipping
+// px und py sind in Pixelkoordinaten
+function binaryMask( px, py )
+{
+    var digits = 0;
+    if( px < 0 )
+    {
+        digits += 1;
+    }
+    else if( px > screen.maxPixelX )
+    {
+        digits += 2;
+    }
+    if( py < 0 )
+    {
+        digits += 4;
+    }
+    else if( py > screen.maxPixelY )
+    {
+        digits += 8;
+    }
+    return digits;
+}
+
+// Zeichnen einer geclippten Linie
+function drawClippedLine( startX, startY, endX, endY )
+{
+    var digitsStart = binaryMask( startX, startY );
+    var digitsEnd   = binaryMask( endX, endY );
+
+    document.getElementById("debugMaskStart").innerHTML = digitsStart;
+    document.getElementById("debugMaskEnd").innerHTML = digitsEnd;
+
+    /*var strokeStye = "";
+    if( ( digitsStart & digitsEnd ) != 0 )
+    {
+        // outside
+        strokeStyle = "#f00000";
+    }
+    else if( ( digitsStart | digitsEnd ) == 0 )
+    {
+        // inside
+        strokeStyle = "#00e000";
+    }
+    else
+    {
+        // other
+        strokeStyle = "#0000e0";
+    }*/
+
+    var m = (endY - startY) / (endX - startX);
+    var n = startY - m * startX;
+
+    function f(x) {
+      return m * x + n;
+    }
+
+    function fz(y) {
+      return (y - n) / m
+    }
+
+    var x = startX;
+    var y = startY;
+    clip();
+    startX = x;
+    startY = y
+
+    x = endX;
+    y = endY;
+    clip();
+    endX = x;
+    endY = y;
+
+
+    function clip() {
+      if (x >= 40) {
+        if (y >= 40) {
+          if(f(40) >= 40) {
+            x = fz(39);
+            y = 39;
+          } else {
+            y = f(39);
+            x = 39;
+          }
+        } else if (y <= 40 && y >= 0) {
+          x = 39;
+          y = f(x);
+        } else {
+          if (f(39) <= 0) {
+            x = fz(0);
+            y = 0;
+          } else {
+            y = f(39);
+            x = 39;
+          }
+        }
+      } else if (x < 0) {
+        if (y >= 40) {
+          if(f(0) >= 40) {
+            x = fz(39);
+            y = 39;
+          } else {
+            y = f(0);
+            x = 0;
+          }
+        } else if (y <= 40 && y >= 0) {
+          x = 0;
+          y = f(x);
+        } else {
+          if (f(0) <= 0) {
+            x = fz(0);
+            y = 0;
+          } else {
+            y = f(0);
+            x = 0;
+          }
+        }
+      } else {
+        if (y < 0) {
+          y = 0;
+          x = fz(0);
+        } else if(y >= 40) {
+          y = 39;
+          x = fz(39);
+        }
+      }
+    }
+
+
+    // Zum Debuggen: Zeichnen des ersten und letzten Pixels
+    // der Linie in der Farbe des Falles zum Clippen der Linie
+    //putPixel( Math.round(startX), Math.round(startY), strokeStyle );
+    //putPixel( Math.round(endX), Math.round(endY), strokeStyle );
+
+    /// AUFGABE 2: Einfügen von Clipping
+    /// dazu muss border z.B. auf 10 gesetzt werden, sodass
+    /// man Linien auch außerhalb des angezeigten Bereiches
+    /// erzeugen kann
+
+    // END AUFGABE 2
+
+    bresenham( Math.round(startX), Math.round(startY), Math.round(endX), Math.round(endY));
+}
+
+function bresenham( startX, startY, endX, endY )
+{
+    /// AUFGABE 1: Implementierung des Bresenham-Algorithmus
+    /// Ersetzen Sie den Code in dieser Funktion mit dem
+    /// Bresenham-Algorithmus.
+    /// Gewährleisten Sie, dass Linien in alle Richtungen gezeichnet
+    /// werden können.
+    /// Pixel färben Sie mit der Funktion putPixel ein.
+
+    if (endX < startX) {
+      x = endX;
+      endX = startX;
+      startX = x;
+      y = endY;
+      endY = startY;
+      startY = y;
+    } else if((endY < startY) && (startX == endX)) {
+      x = endX;
+      endX = startX;
+      startX = x;
+      y = endY;
+      endY = startY;
+      startY = y;
+    }
+
+    var dx = endX - startX;
+    var dy = endY - startY;
+
+    x = startX;
+    y = startY;
+
+    var fehler = dx / 2;
+    if ((startX == endX) || (startY == endY)) {
+      for(x = startX; x <= startX + dx; x++) {
+        for(y = startY; y <= startY + dy; y++) {
+          putPixel( x, y, '#f0f000' );
+        }
+      }
+    } else if((startY < endY)) {
+      while (x <= endX) {
+        putPixel( x, y, "#f0f000" );
+        if ( fehler < 0 ) {
+          y += 1;
+          fehler += dx;
+        } else {
+          x += 1;
+          fehler -= dy;
+        }
+      }
+    } else {
+      while (x <= endX) {
+        if (y < endY) {
+          y += 1;
+        }
+        putPixel( x, y, "#f0f000" );
+        if (fehler > 0) {
+          y -= 1;
+          fehler -= dx;
+        } else {
+          x += 1;
+          fehler -= dy;
+        }
+      }
+    }
+
+    // Bresenham muss hier implementiert werden
+    // drawLinePixelSpace( startX, startY, endX, endY );
+    // END AUFGABE 1
+}
+
+function isInside( px, py )
+{
+    if (px <= 0 || px >= screen.maxPixelX )
+    {
+        return false;
+    }
+    if( py <= 0 || py >= screen.maxPixelY )
+    {
+        return false;
+    }
+    return true;
+}
+
+// Funktion zum Zeichnen eines Gitters der Pixel
+function drawGrid()
+{
+    var i;
+    for( i = 0; i <= screen.totalwidth; i = i + pixelSize )
+    {
+        drawLine( 0, i, screen.totalheight, i );
+    }
+    for( i = 0; i <= screen.totalheight; i = i + pixelSize )
+    {
+        drawLine( i, 0, i, screen.totalwidth );
+    }
+
+}
+
+
+// Konvertiert Pixelkoordinaten in den echten Bildschirm
+function toScreenSpace( pixelx, pixely )
+{
+    return {
+        x : pixelx * pixelSize + screen.minx,
+        y : pixely * pixelSize + screen.miny
+    };
+}
+
+// konvertiert Bildschirmkoordinaten in die Pixelbezeichnung
+function toPixelSpace( screenx, screeny )
+{
+    return {
+        x : Math.floor(( screenx - screen.minx ) / pixelSize),
+        y : Math.floor(( screeny - screen.miny ) / pixelSize)
+    };
+}
+
+function putPixel( x, y, color )
+{
+    context.fillStyle = color;
+    var coord = toScreenSpace( x, y );
+    context.fillRect( coord.x, coord.y, pixelSize, pixelSize );
+}
+
+// Funktion, die den Bildschirm einzeichnet
+function drawScreen()
+{
+    context.fillStyle = "#eeeeee";
+    context.fillRect(screen.minx,screen.miny,screen.maxx-screen.minx,screen.maxy-screen.miny);
+    context.beginPath();
+    context.moveTo(screen.minx, screen.miny);
+    context.lineTo(screen.maxx,screen.miny);
+    context.lineTo(screen.maxx,screen.maxy);
+    context.lineTo(screen.minx,screen.maxy);
+    context.lineTo(screen.minx,screen.miny);
+    context.stroke();
+}
+    </script>
+
+</head>
+
+<body onload="init()" >
+    <div id="content">
+        <h1>Clipping</h1>
+
+        <p><small>Zeichen Sie Linien indem Sie die Maustaste beim Start der Linie dr&uuml;cken und beim Ende der Linie loslassen</small></p>
+        <canvas id="canvas" width="900" height="900">
+
+        </canvas>
+    </div>
+
+    Bitmaske des Startpunktes: <div id="debugMaskStart"></div>
+    Bitmaske des Endpunktes: <div id="debugMaskEnd"></div>
+</body>
+</html>
